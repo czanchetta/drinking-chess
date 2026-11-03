@@ -60,22 +60,34 @@ Intensidade **leve**: metade dos goles (arredondado para cima) e meio copo para 
 
 ### 2. Hospedar
 
-O bot precisa ficar ligado o tempo todo (ou pelo menos durante a noite de jogo). Ele usa uns 100 MB de RAM.
+O bot precisa ficar ligado o tempo todo (ou pelo menos durante a noite de jogo). Ele usa uns 100 MB de RAM e só faz conexões de saída: não precisa abrir porta no roteador.
 
-**Opção A — Railway (mais simples, dá para fazer pelo celular)**
+**Opção A — Raspberry Pi em casa (grátis, 24/7)**
+
+Roda tranquilo ao lado do Pi-hole (Pi 2 ou mais novo; o Zero 2 W serve). Pelo SSH no Raspberry:
+```bash
+git clone https://github.com/czanchetta/drinking-chess.git ~/drinking-chess
+bash ~/drinking-chess/scripts/instalar-raspberry.sh
+```
+O script baixa o Node.js para `~/.local` (sem mexer nos pacotes do sistema nem no Pi-hole), pede o token do bot (cole e aperte Enter; ele não aparece na tela), cria o serviço `beer-chess` e mostra o log. O bot liga sozinho quando o Raspberry reinicia, com prioridade baixa e no máximo 300 MB de memória.
+
+- log ao vivo: `journalctl -u beer-chess -f`
+- atualizar para a versão mais nova do GitHub: `bash ~/drinking-chess/scripts/atualizar.sh`
+
+**Opção B — Railway (dá para fazer pelo celular)**
 1. Crie a conta em <https://railway.com> entrando com o GitHub.
-2. **New Project → Deploy from GitHub repo** → escolha este repositório (se ele for privado, autorize o Railway a ver o repositório).
+2. **New Project → Deploy from GitHub repo** → escolha este repositório.
 3. No serviço, aba **Variables**, adicione `DISCORD_TOKEN` com o token do passo 1.
 4. O Railway acha o `Dockerfile` e sobe. Nos logs deve aparecer `Conectado como Beer Chess#…`.
 
-Custo: o teste grátis dá US$ 5 de crédito. Depois disso, o plano Hobby custa US$ 5/mês com US$ 5 de uso incluídos, o que sobra para este bot.
+Custo: contas novas precisam de plano pago para fazer deploy; o Hobby custa US$ 5/mês com US$ 5 de uso incluídos, o que sobra para este bot.
 
-**Opção B — Square Cloud (brasileira, em reais)**
+**Opção C — Square Cloud (brasileira, em reais)**
 1. Crie a conta em <https://squarecloud.app> e assine o plano Hobby (a partir de R$ 12,49/mês).
 2. Faça upload deste repositório (zip sem a pasta `node_modules`) — o arquivo [`squarecloud.app`](squarecloud.app) já está pronto.
 3. Em **Variáveis de ambiente**, adicione `DISCORD_TOKEN` e reinicie o app.
 
-**Opção C — no seu computador, só na noite de jogo (grátis)**
+**Opção D — no seu computador, só na noite de jogo (grátis)**
 ```bash
 git clone https://github.com/czanchetta/drinking-chess
 cd drinking-chess
