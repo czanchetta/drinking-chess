@@ -1,4 +1,4 @@
-// O que cada subcomando do /beerchess faz.
+// O que cada subcomando e cada botão do /beerchess faz.
 
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, MessageFlags } from 'discord.js';
 import { CLOCKS, DEFAULT_CLOCK } from './commands.js';
@@ -6,6 +6,7 @@ import { demoFeed } from './demo.js';
 import { formatRules, formatScoreboard } from './format.js';
 import { parseGameId } from './lichess.js';
 import { DEFAULT_RULES, INTENSITIES, normalizeIntensity } from './rules.js';
+import { linkReply, lobbyPayload, mention, parseCustomId, tableLine } from './ui.js';
 
 const BEER = 0xf2a900;
 const WATCH_WAIT_MS = 10 * 60_000; // /assistir: espera até 10 min a partida aparecer
@@ -23,10 +24,15 @@ function friendlyError(err) {
   return 'algo deu errado aqui. Tenta de novo daqui a pouco.';
 }
 
-export function createHandler({ manager, lichess, rules = DEFAULT_RULES, challengeWaitMs, demoDelayMs = 2_000, log = () => {} }) {
+export function createHandler({ manager, lichess, tables, rules = DEFAULT_RULES, challengeWaitMs, demoDelayMs = 2_000, log = () => {} }) {
   const players = (interaction) => ({
     w: { discordId: interaction.options.getUser('brancas')?.id },
     b: { discordId: interaction.options.getUser('pretas')?.id },
+  });
+
+  const userInfo = (interaction) => ({
+    id: interaction.user.id,
+    name: interaction.member?.displayName ?? interaction.member?.nick ?? interaction.user.globalName ?? interaction.user.username,
   });
 
   async function novo(interaction) {
@@ -96,8 +102,26 @@ export function createHandler({ manager, lichess, rules = DEFAULT_RULES, challen
       : { content: `👀 Combinado! Acompanhando ${lichess.gameUrl(gameId)} — aviso aqui quem bebe.`, allowedMentions: { parse: [] } });
   }
 
+  async function mesa(interaction) {
+    const existing = tables.inChannel(interaction.channelId);
+    if (existing) {
+      await interaction.reply(ephemeral('Já tem uma mesa aberta neste canal. Para fechar: 🛑 **Encerrar mesa** nela ou `/beerchess parar`.'));
+      return;
+    }
+    const { table } = tables.open({
+      channelId: interaction.channelId,
+      host: userInfo(interaction),
+      format: interaction.options.getString('formato'),
+      clockKey: interaction.options.getString('tempo'),
+      intensity: interaction.options.getString('intensidade'),
+    });
+    await interaction.reply(lobbyPayload(table));
+  }
+
   async function placar(interaction) {
-    const text = formatScoreboard(manager.scoreboard(interaction.channelId));
+    let text = formatScoreboard(manager.scoreboard(interaction.channelId));
+    const table = tables.inChannel(interaction.channelId);
+    if (table) text += `\n\n${tableLine(table)}`;
     await interaction.reply({ content: text.slice(0, 2000), allowedMentions: { parse: [] } });
   }
 
@@ -108,10 +132,17 @@ export function createHandler({ manager, lichess, rules = DEFAULT_RULES, challen
       await interaction.reply(ephemeral('Não entendi esse link/código.'));
       return;
     }
+    const table = gameId ? null : tables.inChannel(interaction.channelId);
+    const closed = table ? table.close({ by: interaction.user.id, force: true, announce: false }) : null;
     const count = manager.stop(interaction.channelId, gameId);
-    await interaction.reply(count
-      ? `⏹️ Parei de acompanhar ${count === 1 ? '1 partida' : `${count} partidas`}. O placar continua no \`/beerchess placar\`.`
-      : ephemeral('Não tinha nenhuma partida rolando neste canal.'));
+    if (!count && !closed?.ok) {
+      await interaction.reply(ephemeral('Não tinha nenhuma partida rolando neste canal.'));
+      return;
+    }
+    const lines = [];
+    if (count) lines.push(`⏹️ Parei de acompanhar ${count === 1 ? '1 partida' : `${count} partidas`}. O placar continua no \`/beerchess placar\`.`);
+    if (closed?.summary) lines.push(closed.summary.content);
+    await interaction.reply({ content: lines.join('\n\n'), allowedMentions: { parse: [] } });
   }
 
   async function regras(interaction) {
@@ -129,9 +160,96 @@ export function createHandler({ manager, lichess, rules = DEFAULT_RULES, challen
       : '🎭 Reprise da **Partida da Ópera** (Paris, 1858): Morphy sacrifica a dama e dá mate em 17 lances. Acompanha aqui 👇');
   }
 
-  const routes = { novo, assistir, placar, parar, regras, demo };
+  const routes = { novo, mesa, assistir, placar, parar, regras, demo };
+
+  // Botões da mesa. lobby = clicaram na mensagem fixa da mesa (que é atualizada no lugar).
+  const tableActions = {
+    async entrar({ interaction, table, user, lobby }) {
+      const res = table.join(user);
+      if (!res.ok) {
+        await interaction.reply(ephemeral(res.message));
+        return;
+      }
+      if (lobby) await interaction.update(lobbyPayload(table));
+      else {
+        await interaction.reply({
+          content: `🙋 ${mention(user.id)} entrou na mesa${res.position ? ` (${res.position}º na fila)` : ''}.`,
+          allowedMentions: { parse: [] },
+        });
+      }
+    },
+    async sair({ interaction, table, user, lobby }) {
+      const res = table.leave(user.id);
+      if (!res.ok) {
+        await interaction.reply(ephemeral(res.message));
+        return;
+      }
+      if (lobby) await interaction.update(lobbyPayload(table));
+      else {
+        const extra = res.playing && !res.cancelled ? ' Termina a partida atual e depois fica de fora.' : '';
+        await interaction.reply({ content: `🚪 ${mention(user.id)} saiu da mesa.${extra}`, allowedMentions: { parse: [] } });
+      }
+    },
+    async comecar({ interaction, table, user, lobby }) {
+      let problem = null;
+      if (table.status === 'encerrada') problem = 'Essa mesa já foi encerrada.';
+      else if (!table.isSeated(user.id)) problem = 'Entra na mesa primeiro 😉 (🙋 Entrar)';
+      else if (table.status === 'jogando' || table.closing) problem = 'A mesa já está rolando 🍻';
+      else if (table.seatedCount < 2) problem = 'Precisa de pelo menos 2 na mesa.';
+      if (problem) {
+        await interaction.reply(ephemeral(problem));
+        return;
+      }
+      await interaction.deferUpdate();
+      await table.start();
+      // Mensagem da mesa: mostra o novo estado. Aviso de pausa: some com os botões já usados.
+      await interaction.editReply(lobby ? lobbyPayload(table) : { components: [] });
+    },
+    async encerrar({ interaction, table, user, lobby }) {
+      if (!table.isSeated(user.id) && table.hostId !== user.id) {
+        await interaction.reply(ephemeral('Só quem está na mesa pode encerrar.'));
+        return;
+      }
+      const res = table.close({ by: user.id });
+      if (!res.ok) {
+        await interaction.reply(ephemeral(res.message));
+        return;
+      }
+      if (lobby) await interaction.update(lobbyPayload(table));
+      else await interaction.deferUpdate();
+    },
+  };
+
+  async function onButton(interaction) {
+    const parsed = parseCustomId(interaction.customId);
+    if (!parsed) return;
+    const table = tables.get(parsed.tableId);
+    if (!table) {
+      await interaction.reply(ephemeral('Essa mesa não existe mais (o bot pode ter reiniciado). Abram outra com `/beerchess mesa`.'));
+      return;
+    }
+    const user = userInfo(interaction);
+    if (parsed.kind === 'link') {
+      const game = table.games.get(parsed.gameId);
+      await interaction.reply(game ? linkReply(table, game, user.id) : ephemeral('Não achei essa partida.'));
+      return;
+    }
+    const action = tableActions[parsed.action];
+    if (action) await action({ interaction, table, user, lobby: parsed.where === 'L' });
+  }
 
   return async function onInteraction(interaction) {
+    if (interaction.isButton() && String(interaction.customId).startsWith('bc:')) {
+      try {
+        await onButton(interaction);
+      } catch (err) {
+        log(`botão ${interaction.customId} falhou: ${err?.stack ?? err}`);
+        const reply = ephemeral(`💥 Não deu: ${friendlyError(err)}`);
+        if (interaction.deferred || interaction.replied) await interaction.followUp(reply).catch(() => {});
+        else await interaction.reply(reply).catch(() => {});
+      }
+      return;
+    }
     if (!interaction.isChatInputCommand() || interaction.commandName !== 'beerchess') return;
     if (!interaction.inGuild()) {
       await interaction.reply(ephemeral('Usa o /beerchess dentro de um servidor 😉'));

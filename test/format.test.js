@@ -60,7 +60,7 @@ test('packMessages respeita o limite do Discord', () => {
 test('comando /beerchess é válido para o Discord', () => {
   const [cmd] = buildCommands();
   assert.equal(cmd.name, 'beerchess');
-  assert.deepEqual(cmd.options.map((o) => o.name), ['novo', 'assistir', 'placar', 'parar', 'regras', 'demo']);
+  assert.deepEqual(cmd.options.map((o) => o.name), ['novo', 'mesa', 'assistir', 'placar', 'parar', 'regras', 'demo']);
   const walk = (node) => {
     assert.match(node.name, /^[-_\p{Ll}\p{N}]{1,32}$/u, node.name);
     assert.ok(node.description.length >= 1 && node.description.length <= 100, node.description);
@@ -70,7 +70,10 @@ test('comando /beerchess é válido para o Discord', () => {
   walk(cmd);
   const novo = cmd.options[0];
   assert.deepEqual(novo.options.find((o) => o.name === 'tempo').choices.map((c) => c.value), Object.keys(CLOCKS));
-  assert.equal(cmd.options[1].options[0].required, true, 'partida é obrigatória no /assistir');
+  const mesa = cmd.options[1];
+  assert.deepEqual(mesa.options.map((o) => o.name), ['formato', 'tempo', 'intensidade']);
+  assert.deepEqual(mesa.options[0].choices.map((c) => c.value), ['rei', 'rodizio']);
+  assert.equal(cmd.options[2].options[0].required, true, 'partida é obrigatória no /assistir');
 });
 
 test('config e link de convite', () => {

@@ -18,6 +18,17 @@ const intensity = (option) => option
   .addChoices({ name: 'normal', value: 'normal' }, { name: 'leve (metade dos goles)', value: 'leve' });
 const white = (option) => option.setName('brancas').setDescription('Quem joga de brancas');
 const black = (option) => option.setName('pretas').setDescription('Quem joga de pretas');
+const clock = (option) => option
+  .setName('tempo')
+  .setDescription(`Ritmo da partida (padrão ${DEFAULT_CLOCK})`)
+  .addChoices(...Object.entries(CLOCKS).map(([value, c]) => ({ name: c.label, value })));
+const format = (option) => option
+  .setName('formato')
+  .setDescription('Como a mesa gira (padrão: quem ganha fica)')
+  .addChoices(
+    { name: 'quem ganha fica (rei da mesa)', value: 'rei' },
+    { name: 'rodízio (todo mundo joga igual)', value: 'rodizio' },
+  );
 
 export function buildCommands() {
   const command = new SlashCommandBuilder()
@@ -29,10 +40,13 @@ export function buildCommands() {
       .setDescription('Cria uma partida casual no Lichess e aviso aqui quem bebe')
       .addUserOption(white)
       .addUserOption(black)
-      .addStringOption((option) => option
-        .setName('tempo')
-        .setDescription(`Ritmo da partida (padrão ${DEFAULT_CLOCK})`)
-        .addChoices(...Object.entries(CLOCKS).map(([value, clock]) => ({ name: clock.label, value }))))
+      .addStringOption(clock)
+      .addStringOption(intensity))
+    .addSubcommand((sub) => sub
+      .setName('mesa')
+      .setDescription('Abre uma mesa: eu sorteio quem joga com quem e mando o link de cada um')
+      .addStringOption(format)
+      .addStringOption(clock)
       .addStringOption(intensity))
     .addSubcommand((sub) => sub
       .setName('assistir')

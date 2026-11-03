@@ -24,6 +24,20 @@ Goles na partida: @Fulano 25 goles · @Beltrano 18 goles + 1 copo
 >
 > Usei a API pública de stream de partidas, e não a Board API: a Board API exige o token de cada jogador; a pública não pede login de ninguém.
 
+## Mesa: o bot decide quem joga com quem
+
+Para três ou mais amigos, `/beerchess mesa` abre uma mesa com os botões **🙋 Entrar**, **🚪 Sair**, **▶️ Começar** e **🛑 Encerrar mesa**.
+
+- Com 2 ou mais na mesa, alguém clica em ▶️ **Começar**. O bot sorteia a primeira dupla e as cores, cria a partida no Lichess e posta quem joga e quem está na fila.
+- Cada um clica em **🎟️ Meu link**. O jogador de brancas recebe o link das brancas, o de pretas recebe o das pretas, e quem está de fora recebe o link para assistir. Só quem clicou vê a resposta, então ninguém senta no lugar errado.
+- Quando a partida acaba, o bot já cria a próxima. Dois formatos:
+  - **quem ganha fica** (padrão, "rei da mesa"): o vencedor continua, quem perde vai para o fim da fila e o próximo da fila entra. No empate, os dois vão para o fim.
+  - **rodízio**: todo mundo joga a mesma quantidade de partidas, contra todo mundo. Entra primeiro quem jogou menos, contra quem ele enfrentou menos.
+- As brancas vão para quem jogou menos de brancas.
+- Dá para entrar e sair no meio. Quem sai antes da partida começar tem a dupla refeita na hora; quem sai no meio termina a partida e depois fica de fora.
+- Se ninguém entrar na partida a tempo, ou se ela for abortada, a mesa pausa e espera um ▶️ **Continuar**. Se sobrar só uma pessoa, a mesa volta sozinha quando alguém entrar.
+- 🛑 **Encerrar mesa** com partida rolando deixa ela terminar e depois mostra o resumo: vitórias e goles de cada um. `/beerchess parar` encerra na hora.
+
 ## Regras padrão
 
 | Acontecimento | Quem bebe | Goles |
@@ -43,9 +57,10 @@ Intensidade **leve**: metade dos goles (arredondado para cima) e meio copo para 
 | Comando | O que faz |
 |---|---|
 | `/beerchess novo [brancas] [pretas] [tempo] [intensidade]` | Cria a partida casual (padrão 5+3) e já fica de olho |
+| `/beerchess mesa [formato] [tempo] [intensidade]` | Abre uma mesa: o bot sorteia quem joga com quem, manda o link de cada um e gira sozinho |
 | `/beerchess assistir partida:<link>` | Acompanha uma partida que vocês criaram por conta própria no Lichess |
-| `/beerchess placar` | Goles de cada partida do canal + placar da noite |
-| `/beerchess parar [partida]` | Para de acompanhar (uma ou todas do canal) |
+| `/beerchess placar` | Goles de cada partida do canal + placar da noite (e a situação da mesa) |
+| `/beerchess parar [partida]` | Para de acompanhar (uma ou todas do canal) e encerra a mesa |
 | `/beerchess regras [intensidade]` | Mostra as regras |
 | `/beerchess demo` | Reprisa a Partida da Ópera (Morphy, 1858) para ver o bot em ação sem jogar |
 
@@ -113,7 +128,7 @@ O mesmo `Dockerfile` serve para Fly.io (`fly launch`), uma VPS ou qualquer servi
 ## Limitações
 
 - Só xadrez normal (nada de 960, crazyhouse etc.).
-- As partidas ficam na memória. Se o bot reiniciar no meio de uma, use `/beerchess assistir` com o link para retomar — a contagem recomeça dali.
+- As partidas ficam na memória. Se o bot reiniciar no meio de uma, use `/beerchess assistir` com o link para retomar — a contagem recomeça dali. A mesa também se perde: é só abrir outra com `/beerchess mesa`.
 - Se a conexão com o Lichess cair e voltar alguns lances depois, o bot conta as peças perdidas no intervalo, mas pode deixar passar um xeque ou roque daquele trecho.
 
 ## Desenvolvimento

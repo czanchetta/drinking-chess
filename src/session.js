@@ -35,7 +35,7 @@ export class GameSession {
   constructor({
     gameId, channelId, players = {}, intensity = 'normal', rules = DEFAULT_RULES, feed, post,
     gameUrl = null, clockLabel = null, waitForStart = true, waitForStartMs = null, demo = false,
-    timing = {}, log = () => {},
+    timing = {}, log = () => {}, onEnd = null, pingStart = true,
   }) {
     this.gameId = gameId;
     this.channelId = channelId;
@@ -52,6 +52,8 @@ export class GameSession {
     this.waitForStartMs = waitForStartMs ?? this.timing.waitForStartMs;
     this.demo = demo;
     this.log = log;
+    this.onEnd = onEnd; // chamado uma vez quando a sessão termina, por qualquer motivo
+    this.pingStart = pingStart;
     this.status = 'waiting'; // waiting | live | finished | stopped | expired | error
     this.started = false;
     this.finished = false;
@@ -75,12 +77,24 @@ export class GameSession {
   }
 
   start() {
-    this.done = this.run().catch((err) => {
-      this.log(`[${this.gameId}] erro inesperado: ${err?.stack ?? err}`);
-      this.status = 'error';
-      this.endedAt = Date.now();
-    });
+    this.done = this.run()
+      .catch((err) => {
+        this.log(`[${this.gameId}] erro inesperado: ${err?.stack ?? err}`);
+        this.status = 'error';
+        this.endedAt = Date.now();
+      })
+      .finally(() => this.notifyEnd());
     return this;
+  }
+
+  // Sem await de propósito: quem ouve (a mesa) pode parar esta sessão e criar outra sem travar.
+  notifyEnd() {
+    if (!this.onEnd) return;
+    try {
+      Promise.resolve(this.onEnd(this)).catch((err) => this.log(`[${this.gameId}] onEnd falhou: ${err?.stack ?? err}`));
+    } catch (err) {
+      this.log(`[${this.gameId}] onEnd falhou: ${err?.stack ?? err}`);
+    }
   }
 
   stop() {
@@ -182,7 +196,7 @@ export class GameSession {
       await this.say(formatStart({
         players: this.players, gameUrl: this.gameUrl, clockLabel: this.clockLabel, info, start,
         intensity: this.intensity, delayNote: !this.demo,
-      }), { ping: true });
+      }), { ping: this.pingStart });
       return;
     }
     if (finished) {
@@ -262,7 +276,7 @@ export class GameManager {
     return this.activeCount < this.maxGames;
   }
 
-  watch({ gameId, channelId, players, intensity, clockLabel = null, waitForStartMs = null }) {
+  watch({ gameId, channelId, players, intensity, clockLabel = null, waitForStartMs = null, onEnd = null, pingStart = true }) {
     const key = `${channelId}:${gameId}`;
     const existing = this.sessions.get(key);
     if (existing?.active) return { session: existing, existing: true };
@@ -287,6 +301,8 @@ export class GameManager {
       post: (payload) => this.send(channelId, payload),
       timing: this.timing,
       log: this.log,
+      onEnd,
+      pingStart,
     });
     this.sessions.set(key, session);
     session.start();

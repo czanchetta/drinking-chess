@@ -7,6 +7,7 @@ import { inviteUrl, loadConfig } from './config.js';
 import { createHandler } from './handlers.js';
 import { LichessClient } from './lichess.js';
 import { GameManager } from './session.js';
+import { TableManager } from './table.js';
 import { timestamp } from './util.js';
 
 const log = (...args) => console.log(`[${timestamp()}]`, ...args);
@@ -33,23 +34,17 @@ const lichess = new LichessClient({
   userAgent: config.userAgent,
 });
 
-const manager = new GameManager({
-  lichess,
-  log,
-  maxGames: config.maxGames,
-  send: async (channelId, payload) => {
-    const channel = client.channels.cache.get(channelId) ?? (await client.channels.fetch(channelId));
-    if (!channel?.isSendable()) throw new Error('não tenho permissão para mandar mensagem nesse canal');
-    return channel.send(payload);
-  },
-});
+async function send(channelId, payload) {
+  const channel = client.channels.cache.get(channelId) ?? (await client.channels.fetch(channelId));
+  if (!channel?.isSendable()) throw new Error('não tenho permissão para mandar mensagem nesse canal');
+  return channel.send(payload);
+}
 
-const onInteraction = createHandler({
-  manager,
-  lichess,
-  log,
-  challengeWaitMs: config.challengeWaitMinutes * 60_000,
-});
+const challengeWaitMs = config.challengeWaitMinutes * 60_000;
+const manager = new GameManager({ lichess, log, maxGames: config.maxGames, send });
+const tables = new TableManager({ manager, lichess, send, log, challengeWaitMs });
+
+const onInteraction = createHandler({ manager, lichess, tables, log, challengeWaitMs });
 
 client.once(Events.ClientReady, async (ready) => {
   log(`Conectado como ${ready.user.tag} em ${ready.guilds.cache.size} servidor(es)`);
@@ -85,6 +80,7 @@ async function shutdown(signal) {
   if (closing) return;
   closing = true;
   log(`${signal} recebido, desligando…`);
+  tables.shutdown();
   await manager.shutdown().catch(() => {});
   await client.destroy().catch(() => {});
   server?.close();
