@@ -1,0 +1,30 @@
+{
+  "name": "drinking-chess",
+  "version": "1.0.0",
+  "description": "Bot de Discord que transforma partidas casuais do Lichess em beer chess: avisa no canal quem bebe e quantos goles.",
+  "type": "module",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "keywords": [
+    "discord",
+    "lichess",
+    "chess",
+    "xadrez",
+    "beer-chess"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "chess.js": "^1.4.0",
+    "discord.js": "^14.28.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/czanchetta/drinking-chess.git"
+  }
+}
